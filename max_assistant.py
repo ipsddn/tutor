@@ -7,6 +7,7 @@ import subprocess
 
 import speech_recognition as sr
 import pyttsx3
+import google.generativeai as genai
 
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
 from PyQt5.QtCore import Qt, QTimer, QPoint, pyqtSignal, QObject
@@ -17,6 +18,22 @@ from playwright.sync_api import sync_playwright
 # ==========================================
 # CREDENTIALS & CONFIGURATION
 # ==========================================
+# Integrated Gemini API Key
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6IbYVtCgT0b8Ls-IBd0_uqk_hxFx8wqKZ6PQlsGHRs2JQ")
+
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction="You are MAX, an intelligent AI Assistant created by Sumit Sharma. Keep your answers concise, helpful, friendly, and short (1-2 lines maximum) so they sound natural when spoken out loud. Answer in Hindi or Hinglish when appropriate."
+        )
+    except Exception as e:
+        print(f"Gemini Init Error: {e}")
+        model = None
+else:
+    model = None
+
 NVR_USERNAME = "admin"
 NVR_PASSWORD = "IPS@12345"
 NVR_URL = "https://10.1.1.198/doc/index.html#/portal/login"
@@ -24,7 +41,7 @@ ERP_URL = "https://ipserp.edunexttechnologies.com/"
 MOD_URL = "http://103.230.155.58:90/mod/admin_panel.php"
 
 # Time Configuration for Idle Check (Seconds)
-IDLE_CHECK_INTERVAL = 60
+IDLE_CHECK_INTERVAL = 120
 
 last_interaction_time = time.time()
 speech_lock = threading.Lock()
@@ -140,8 +157,19 @@ def listen_command():
             print(f"Listening Error: {e}")
             return ""
 
+def ask_gemini_ai(prompt):
+    """Generates intelligent response using Gemini LLM"""
+    if not model:
+        return "Sir, Gemini AI model initialize nahi ho paaya."
+    try:
+        response = model.generate_content(prompt)
+        return response.text.replace("*", "").strip()
+    except Exception as e:
+        print(f"Gemini AI Error: {e}")
+        return "Sorry Sir, AI response process karne me issue aa raha hai."
+
 # ==========================================
-# 2. VOICE COMMAND EXECUTION
+# 2. VOICE COMMAND EXECUTION (HYBRID ENGINE)
 # ==========================================
 def process_command(command, status_callback):
     if not command:
@@ -149,109 +177,59 @@ def process_command(command, status_callback):
 
     status_callback(f"Command: {command}")
 
-    # CREATOR INFO
-    if any(q in command for q in ["who created you", "kisse banaya", "who made you"]):
-        speak("I am MAX, a virtual assistant created by Sumit Sharma, he is my sir.")
-
-    # TIME-BASED GREETINGS
-    elif "good morning" in command:
-        speak("Good Morning Sir! Aapka din shubh aur productive ho!")
-    elif "good afternoon" in command:
-        speak("Good Afternoon Sir! How can I help you?")
-    elif "good evening" in command:
-        speak("Good Evening Sir! Batayein, main aapki kya help kar sakta hoon?")
-    elif "good night" in command:
-        speak("Good Night Sir! Have a wonderful night!")
-
-    # GENERAL GREETINGS & CASUAL INTENTS
-    elif "hello" in command:
-        speak("Hello Sir! I am MAX. How can I help you?")
-    elif "hi max" in command or "hi" in command:
-        speak("Hi Sir! MAX is online. Batayein, kya help chahiye?")
-    elif "hey max" in command or "hey" in command:
-        speak("Hey Sir! Batayein, MAX aapki kya help kare?")
-
-    # GENERAL QUESTIONS
-    elif any(q in command for q in ["how are you", "kaise ho", "how r u"]):
-        speak("I am MAX. I am online and always good! You tell me, how are you?")
-    elif any(q in command for q in ["what is your name", "naam kya hai", "who are you"]):
-        speak("My name is MAX. Aap apna naam bataye?")
-
-    # THANK YOU RESPONSES
-    elif "thank you max" in command or "thanks max" in command:
-        speak("You're always welcome, Sir! MAX is happy to help.")
-    elif "thank you" in command:
-        speak("You're most welcome, Sir!")
-    elif "thanks" in command:
-        speak("My pleasure, Sir!")
-
-    # EXIT / BYE RESPONSES
-    elif "bye" in command or "goodbye" in command:
-        speak("Goodbye Sir! Have a great day!")
-        os._exit(0)
-    elif "see you" in command:
-        speak("See you soon, Sir!")
+    # SYSTEM CONTROL COMMANDS
+    if any(q in command for q in ["exit", "shutdown", "stop", "bye", "goodbye"]):
+        speak("Shutting down MAX. Have a great day, Sir!")
         os._exit(0)
 
-    # APPLICATION & PORTAL LAUNCHERS
+    # LOCAL APPLICATION & PORTAL LAUNCHERS
     elif any(q in command for q in ["open google", "chrome open", "google open"]):
         open_in_chrome("https://www.google.com")
-        speak("Google Chrome open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("Google Chrome open kar diya hai sir.")
     elif "open youtube" in command or "youtube open" in command:
         open_in_chrome("https://www.youtube.com")
-        speak("YouTube open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("YouTube open kar diya hai sir.")
     elif any(q in command for q in ["open erp", "erp open", "edunext"]):
         open_in_chrome(ERP_URL)
-        speak("ERP portal open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("ERP portal open kar diya hai sir.")
     elif any(q in command for q in ["open mod", "mod open", "master on duty"]):
         open_in_chrome(MOD_URL)
-        speak("Master on Duty panel open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("Master on Duty panel open kar diya hai sir.")
     elif any(q in command for q in ["open ms word", "open word", "word open"]):
         try:
             os.system("start winword")
-            speak("Microsoft Word open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+            speak("Microsoft Word open kar diya hai sir.")
         except Exception:
             speak("MS Word open karne me error aaya sir.")
     elif "open excel" in command or "excel open" in command:
         try:
             os.system("start excel")
-            speak("Microsoft Excel open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+            speak("Microsoft Excel open kar diya hai sir.")
         except Exception:
             speak("MS Excel open karne me error aaya sir.")
-    elif any(q in command for q in ["open whatsapp", "whatsapp open", "whatsappweb"]):
+    elif any(q in command for q in ["open whatsapp", "whatsapp open"]):
         open_in_chrome("https://web.whatsapp.com")
-        speak("WhatsApp Web open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
-    elif any(q in command for q in ["open facebook", "facebook open", "meta suite"]):
-        fb_url = "https://business.facebook.com/latest/home?asset_id=960727980622179"
-        open_in_chrome(fb_url)
-        speak("Facebook open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("WhatsApp Web open kar diya hai sir.")
     elif "open nvr" in command or "nvr ip" in command:
         status_callback("Opening NVR Portal via Playwright...")
         threading.Thread(target=handle_nvr_playwright_login, daemon=True).start()
-        speak("NVR portal open karke login kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
-
-    # SEARCH & UTILITIES
-    elif "search" in command:
-        search_query = command.replace("search", "").strip()
-        open_in_chrome(f"https://www.google.com/search?q={search_query}")
-        speak(f"{search_query} search kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("NVR portal open karke login process start kar di hai sir.")
     elif "notepad" in command:
         os.system("notepad")
-        speak("Notepad open kar diya hai sir, aur mai aapke liye kya kar sakta hu sir?")
+        speak("Notepad open kar diya hai sir.")
     elif "close window" in command or "close chrome" in command:
         try:
             import pyautogui
             pyautogui.hotkey('alt', 'f4')
-            speak("Active window close kar di hai sir, aur mai aapke liye kya kar sakta hu sir?")
+            speak("Active window close kar di hai sir.")
         except ImportError:
-            speak("PyAutoGUI installed nahi hai sir.")
-    elif "exit" in command or "stop" in command:
-        speak("Shutting down MAX. Have a great day, Sir!")
-        os._exit(0)
+            speak("PyAutoGUI package install nahi hai sir.")
 
-    # UNKNOWN COMMAND / DEFAULT RESPONSE
+    # REAL AI INTELLIGENCE FOR EVERYTHING ELSE
     else:
-        speak("Mai abhi sikh raha hu, jald hi iska jawab dunga sir.")
+        status_callback("Thinking (AI Response)...")
+        ai_reply = ask_gemini_ai(command)
+        speak(ai_reply)
 
 # ==========================================
 # 3. ROTATING BORDER DISPLAY WIDGET
@@ -339,7 +317,7 @@ class MaxUI(QWidget):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
 
-        self.title_label = QLabel("M.A.X.", self)
+        self.title_label = QLabel("M.A.X. AI", self)
         self.title_label.setFont(QFont("Consolas", 22, QFont.Bold))
         self.title_label.setStyleSheet("color: #FF9100; text-align: center; margin-bottom: 5px;")
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -386,7 +364,7 @@ class MaxUI(QWidget):
 
     def voice_loop(self):
         initial_wish = wish_user()
-        speak(f"{initial_wish} Max core online and ready.")
+        speak(f"{initial_wish} Max AI core online and ready.")
         update_last_activity()
         while self.listening:
             self.update_status("Listening...")
@@ -398,7 +376,7 @@ class MaxUI(QWidget):
     def idle_availability_checker(self):
         """Idle rehne par periodic voice alert deta hai"""
         while self.listening:
-            time.sleep(5)
+            time.sleep(10)
             elapsed = time.time() - last_interaction_time
             if elapsed >= IDLE_CHECK_INTERVAL:
                 speak("Sir, main online hu aur aapki help ke liye ready hu.")
